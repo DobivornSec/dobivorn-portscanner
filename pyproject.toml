@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dobivorn-portscanner"
+version = "4.0.0"
+description = "Fast TCP/UDP port scanner with CIDR support and reporting"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+  { name = "DobivornSec" }
+]
+dependencies = [
+  "colorama",
+  "ipaddress",
+  "scapy"
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+dobivorn-scan = "portscanner:main"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
