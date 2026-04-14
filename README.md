@@ -1,4 +1,4 @@
-# 🐉 Dobivorn Port Scanner v3.0
+# 🐉 Dobivorn Port Scanner v4.0
 
 > **3 Başlı Ejderha** | Red Team | Purple Team | Blue Team
 
@@ -6,7 +6,7 @@ Hızlı ve güçlü port tarayıcı. TCP/UDP desteği, OS tespiti, banner grabbi
 
 ---
 
-## ✨ Özellikler (v3.0)
+## ✨ Özellikler (v4.0)
 
 | Özellik | Açıklama |
 |---------|----------|
@@ -18,6 +18,8 @@ Hızlı ve güçlü port tarayıcı. TCP/UDP desteği, OS tespiti, banner grabbi
 | 📝 **Raporlama** | JSON, CSV, TXT formatları |
 | ⚡ **Multi-Thread** | 100+ thread ile hızlı tarama |
 | 🔄 **TCP/UDP** | Her iki protokol desteği |
+| 🧾 **Loglama** | `--verbose` ve `--log-file` ile izlenebilirlik |
+| ✅ **CI + Test** | GitHub Actions ve `pytest` ile kalite kontrol |
 
 ---
 
@@ -31,7 +33,7 @@ pip install -r requirements.txt
 
 **Gereksinimler:**
 ```bash
-pip install colorama ipaddress
+pip install colorama ipaddress scapy
 ```
 
 ---
@@ -41,6 +43,12 @@ pip install colorama ipaddress
 ### Temel Tarama
 ```bash
 python portscanner.py google.com
+```
+
+### Paketlenmiş CLI Komutu
+```bash
+pip install .
+dobivorn-scan google.com -p 22,80,443
 ```
 
 ### Belirli Port Aralığı
@@ -81,6 +89,33 @@ python portscanner.py github.com -p 22,80,443,3306,5432,6379,8080,8443 -t 100 -o
 | `-o, --output` | Çıktı dosyası | Yok |
 | `--format` | json, csv, txt | json |
 | `--udp` | UDP taraması | Kapalı |
+| `-v, --verbose` | Detaylı loglar | Kapalı |
+| `--log-file` | Log dosyası yolu | Yok |
+
+---
+
+## ✅ Kalite ve Yayın Hazırlığı
+
+- Otomatik testler: `pytest`
+- CI pipeline: `.github/workflows/ci.yml`
+- Güçlendirilmiş port/CIDR doğrulama ve hata mesajları
+- İsteğe bağlı dosya loglama
+
+Testleri çalıştırmak için:
+
+```bash
+pip install pytest
+pytest
+```
+
+---
+
+## 🐳 Docker ile Çalıştırma
+
+```bash
+docker build -t dobivorn-portscanner .
+docker run --rm dobivorn-portscanner google.com -p 22,80,443
+```
 
 ---
 
@@ -90,7 +125,7 @@ python portscanner.py github.com -p 22,80,443,3306,5432,6379,8080,8443 -t 100 -o
 [+] Domain çözümlendi: github.com -> 140.82.121.3
 
 ╔══════════════════════════════════════════════════════════════════════════╗
-║   🐉 Dobivorn Port Scanner v3.0 - 3 Başlı Ejderha                        ║
+║   🐉 Dobivorn Port Scanner v4.0 - 3 Başlı Ejderha                        ║
 ║   🔴 Red Team | 🟣 Purple Team | 🔵 Blue Team                            ║
 ║   ⚡ Multi-Thread | UDP | SYN Scan | OS Detect | CIDR | Banner Grab     ║
 ╚══════════════════════════════════════════════════════════════════════════╝
@@ -182,6 +217,7 @@ Beğendiysen GitHub'da ⭐ bırakmayı unutma!
 
 | Sürüm | Yenilikler |
 |-------|------------|
+| v4.0 | Paketlenebilir CLI, Docker desteği, CI, test altyapısı, logging iyileştirmesi |
 | v3.0 | OS tespiti, port gecikmesi, CIDR desteği, ilerleme çubuğu, gelişmiş banner |
 | v2.0 | TCP/UDP, multi-thread, JSON/CSV/TXT rapor |
 | v1.0 | Temel port tarama |
