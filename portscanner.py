@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Dobivorn Port Scanner v3.0 🐉
+Dobivorn Port Scanner v4.0 🐉
 3 Başlı Ejderha | Red Team | Purple Team | Blue Team
 
-v3.0 Yenilikler:
+v4.0 Yenilikler:
 - SYN Scan (Half-open) - Çok hızlı tarama
 - OS Tespiti (TTL, Window Size)
 - Port gecikme istatistikleri
@@ -22,6 +22,7 @@ import json
 import csv
 import ipaddress
 import time
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from colorama import init, Fore, Style, Back
 
@@ -34,11 +35,13 @@ except ImportError:
 
 # Renkleri başlat
 init(autoreset=True)
+LOGGER = logging.getLogger("dobivorn_portscanner")
+__version__ = "4.0.0"
 
 # Banner
 BANNER = f"""
 {Fore.BLUE}╔══════════════════════════════════════════════════════════════════════════╗
-║   🐉 Dobivorn Port Scanner v3.0 - 3 Başlı Ejderha                        ║
+║   🐉 Dobivorn Port Scanner v4.0 - 3 Başlı Ejderha                        ║
 ║   🔴 Red Team | 🟣 Purple Team | 🔵 Blue Team                            ║
 ║   ⚡ Multi-Thread | UDP | SYN Scan | OS Detect | CIDR | Banner Grab     ║
 ╚══════════════════════════════════════════════════════════════════════════╝{Style.RESET_ALL}
@@ -3148,7 +3151,7 @@ class PortScanner:
                 return "Windows (TTL: {})".format(ttl)
             else:
                 return "Solaris/AIX (TTL: {})".format(ttl)
-        except:
+        except (OSError, ValueError):
             return "Bilinmiyor"
     
     def grab_banner(self, ip, port, protocol='tcp'):
@@ -3185,7 +3188,7 @@ class PortScanner:
                 banner = data.decode('utf-8', errors='ignore').strip()
                 sock.close()
                 return banner[:200] if banner else None
-        except:
+        except (OSError, UnicodeDecodeError):
             return None
     
     def scan_port_tcp(self, ip, port):
@@ -3218,8 +3221,8 @@ class PortScanner:
                     print(f"{Fore.GREEN}[✓] Port {port}/tcp açık -> {service} ({response_time}ms){Style.RESET_ALL}")
                 
                 return result_data
-        except:
-            pass
+        except OSError as exc:
+            LOGGER.debug("TCP tarama hatasi %s:%s -> %s", ip, port, exc)
         return None
     
     def scan_port_udp(self, ip, port):
@@ -3249,9 +3252,9 @@ class PortScanner:
                 print(f"{Fore.CYAN}[✓] Port {port}/udp açık -> {service} [{banner[:60]}...] ({response_time}ms){Style.RESET_ALL}")
                 return result_data
         except socket.timeout:
-            pass
-        except:
-            pass
+            LOGGER.debug("UDP timeout %s:%s", ip, port)
+        except OSError as exc:
+            LOGGER.debug("UDP tarama hatasi %s:%s -> %s", ip, port, exc)
         return None
     
     def scan_ports(self):
@@ -3282,7 +3285,11 @@ class PortScanner:
             
             for future in as_completed(futures):
                 scanned += 1
-                result = future.result()
+                try:
+                    result = future.result()
+                except Exception as exc:
+                    LOGGER.warning("Tarama gorevi hatayla sonlandi: %s", exc)
+                    result = None
                 if result:
                     with self.lock:
                         self.open_ports.append(result)
@@ -3313,44 +3320,47 @@ class PortScanner:
         
         # Dosyaya kaydet
         if self.output:
-            if self.format == 'json':
-                with open(self.output, 'w', encoding='utf-8') as f:
-                    json.dump({
-                        'target': self.host,
-                        'ip': self.ip,
-                        'os_detection': self.detect_os(self.ip),
-                        'scan_time': str(datetime.now()),
-                        'total_ports': len(self.ports),
-                        'open_ports_count': len(self.open_ports),
-                        'open_ports': self.open_ports
-                    }, f, indent=2, ensure_ascii=False)
-                print(f"\n{Fore.GREEN}[+] JSON raporu kaydedildi: {self.output}{Style.RESET_ALL}")
-            elif self.format == 'csv':
-                with open(self.output, 'w', newline='', encoding='utf-8') as f:
-                    writer = csv.DictWriter(f, fieldnames=['port', 'protocol', 'service', 'banner', 'response_time'])
-                    writer.writeheader()
-                    for r in self.open_ports:
-                        writer.writerow({
-                            'port': r['port'],
-                            'protocol': r['protocol'],
-                            'service': r['service'],
-                            'banner': r.get('banner', ''),
-                            'response_time': r.get('response_time', '')
-                        })
-                print(f"\n{Fore.GREEN}[+] CSV raporu kaydedildi: {self.output}{Style.RESET_ALL}")
-            elif self.format == 'txt':
-                with open(self.output, 'w', encoding='utf-8') as f:
-                    f.write(f"Target: {self.host} ({self.ip})\n")
-                    f.write(f"OS Detection: {self.detect_os(self.ip)}\n")
-                    f.write(f"Scan Time: {datetime.now()}\n")
-                    f.write(f"Total Ports: {len(self.ports)}\n")
-                    f.write(f"Open Ports: {len(self.open_ports)}\n\n")
-                    for r in self.open_ports:
-                        f.write(f"{r['port']}/{r['protocol']} - {r['service']} ({r['response_time']}ms)")
-                        if r.get('banner'):
-                            f.write(f" - {r['banner']}")
-                        f.write("\n")
-                print(f"\n{Fore.GREEN}[+] TXT raporu kaydedildi: {self.output}{Style.RESET_ALL}")
+            try:
+                if self.format == 'json':
+                    with open(self.output, 'w', encoding='utf-8') as f:
+                        json.dump({
+                            'target': self.host,
+                            'ip': self.ip,
+                            'os_detection': self.detect_os(self.ip),
+                            'scan_time': str(datetime.now()),
+                            'total_ports': len(self.ports),
+                            'open_ports_count': len(self.open_ports),
+                            'open_ports': self.open_ports
+                        }, f, indent=2, ensure_ascii=False)
+                    print(f"\n{Fore.GREEN}[+] JSON raporu kaydedildi: {self.output}{Style.RESET_ALL}")
+                elif self.format == 'csv':
+                    with open(self.output, 'w', newline='', encoding='utf-8') as f:
+                        writer = csv.DictWriter(f, fieldnames=['port', 'protocol', 'service', 'banner', 'response_time'])
+                        writer.writeheader()
+                        for r in self.open_ports:
+                            writer.writerow({
+                                'port': r['port'],
+                                'protocol': r['protocol'],
+                                'service': r['service'],
+                                'banner': r.get('banner', ''),
+                                'response_time': r.get('response_time', '')
+                            })
+                    print(f"\n{Fore.GREEN}[+] CSV raporu kaydedildi: {self.output}{Style.RESET_ALL}")
+                elif self.format == 'txt':
+                    with open(self.output, 'w', encoding='utf-8') as f:
+                        f.write(f"Target: {self.host} ({self.ip})\n")
+                        f.write(f"OS Detection: {self.detect_os(self.ip)}\n")
+                        f.write(f"Scan Time: {datetime.now()}\n")
+                        f.write(f"Total Ports: {len(self.ports)}\n")
+                        f.write(f"Open Ports: {len(self.open_ports)}\n\n")
+                        for r in self.open_ports:
+                            f.write(f"{r['port']}/{r['protocol']} - {r['service']} ({r['response_time']}ms)")
+                            if r.get('banner'):
+                                f.write(f" - {r['banner']}")
+                            f.write("\n")
+                    print(f"\n{Fore.GREEN}[+] TXT raporu kaydedildi: {self.output}{Style.RESET_ALL}")
+            except OSError as exc:
+                LOGGER.error("Rapor dosyasi yazilamadi (%s): %s", self.output, exc)
     
     def run(self):
         """Tarama başlat"""
@@ -3358,7 +3368,7 @@ class PortScanner:
         try:
             self.ip = socket.gethostbyname(self.host)
             print(f"{Fore.GREEN}[+] Domain çözümlendi: {self.host} -> {self.ip}{Style.RESET_ALL}")
-        except:
+        except socket.gaierror:
             self.ip = self.host
             print(f"{Fore.YELLOW}[+] IP: {self.ip}{Style.RESET_ALL}")
         
@@ -3366,25 +3376,58 @@ class PortScanner:
 
 def parse_ports(port_str):
     """Port listesini parse et"""
+    if not port_str or not port_str.strip():
+        raise ValueError("Port listesi bos olamaz.")
+
     ports = []
-    if '-' in port_str:
-        start, end = map(int, port_str.split('-'))
-        ports = list(range(start, end + 1))
-    else:
-        ports = [int(p.strip()) for p in port_str.split(',')]
-    return ports
+    for raw in port_str.split(','):
+        token = raw.strip()
+        if not token:
+            continue
+        if '-' in token:
+            parts = token.split('-')
+            if len(parts) != 2:
+                raise ValueError(f"Gecersiz port araligi: {token}")
+            start, end = map(int, parts)
+            if start > end:
+                raise ValueError(f"Port araligi ters sirada: {token}")
+            if start < 1 or end > 65535:
+                raise ValueError(f"Port degeri 1-65535 araliginda olmali: {token}")
+            ports.extend(range(start, end + 1))
+        else:
+            port = int(token)
+            if port < 1 or port > 65535:
+                raise ValueError(f"Port degeri 1-65535 araliginda olmali: {token}")
+            ports.append(port)
+
+    unique_ports = sorted(set(ports))
+    if not unique_ports:
+        raise ValueError("Gecerli port bulunamadi.")
+    return unique_ports
 
 def parse_cidr(cidr):
     """CIDR formatını parse et (örn: 192.168.1.0/24)"""
-    try:
-        network = ipaddress.ip_network(cidr, strict=False)
-        return [str(ip) for ip in network.hosts()]
-    except:
-        return None
+    network = ipaddress.ip_network(cidr, strict=False)
+    return [str(ip) for ip in network.hosts()]
+
+
+def configure_logging(verbose=False, log_file=None):
+    level = logging.DEBUG if verbose else logging.INFO
+    handlers = [logging.StreamHandler(sys.stderr)] if verbose else []
+    if log_file:
+        handlers.append(logging.FileHandler(log_file, encoding='utf-8'))
+    if not handlers:
+        logging.basicConfig(level=level, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
+    else:
+        logging.basicConfig(
+            level=level,
+            format="%(asctime)s %(levelname)s %(name)s - %(message)s",
+            handlers=handlers,
+        )
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Dobivorn Port Scanner v3.0 - Hızlı Port Tarayıcı",
+        description="Dobivorn Port Scanner v4.0 - Hızlı Port Tarayıcı",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Örnekler:
@@ -3405,28 +3448,37 @@ def main():
     parser.add_argument("-o", "--output", help="Çıktı dosyası (JSON/CSV/TXT)")
     parser.add_argument("--format", choices=['json', 'csv', 'txt'], default='json', help="Çıktı formatı (varsayılan: json)")
     parser.add_argument("--udp", action="store_true", help="UDP port taraması yap")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Detayli loglari etkinlestir")
+    parser.add_argument("--log-file", help="Log dosyasi yolu")
     
     args = parser.parse_args()
     
+    configure_logging(args.verbose, args.log_file)
+
     # Port listesini belirle
-    if args.ports:
-        ports = parse_ports(args.ports)
-    else:
-        # Varsayılan popüler portlar
-        ports = [20, 21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 
-                 443, 445, 465, 587, 993, 995, 1080, 1194, 1352, 1433,
-                 1521, 1723, 1883, 2049, 2181, 2375, 2376, 2379, 2380,
-                 3306, 3389, 3690, 4369, 5432, 5672, 5900, 5901, 5984,
-                 5985, 5986, 6379, 6667, 7001, 7199, 8000, 8008, 8009,
-                 8080, 8086, 8087, 8088, 8089, 8090, 8091, 8140, 8443,
-                 8883, 8888, 9000, 9042, 9090, 9092, 9100, 9200, 9300,
-                 9418, 9999, 10000, 11211, 15672, 16010, 18080, 25565,
-                 27017, 27018, 27019, 28017, 31337, 50000, 50070, 60010]
+    try:
+        if args.ports:
+            ports = parse_ports(args.ports)
+        else:
+            # Varsayılan popüler portlar
+            ports = [20, 21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 
+                    443, 445, 465, 587, 993, 995, 1080, 1194, 1352, 1433,
+                    1521, 1723, 1883, 2049, 2181, 2375, 2376, 2379, 2380,
+                    3306, 3389, 3690, 4369, 5432, 5672, 5900, 5901, 5984,
+                    5985, 5986, 6379, 6667, 7001, 7199, 8000, 8008, 8009,
+                    8080, 8086, 8087, 8088, 8089, 8090, 8091, 8140, 8443,
+                    8883, 8888, 9000, 9042, 9090, 9092, 9100, 9200, 9300,
+                    9418, 9999, 10000, 11211, 15672, 16010, 18080, 25565,
+                    27017, 27018, 27019, 28017, 31337, 50000, 50070, 60010]
+    except ValueError as exc:
+        print(f"{Fore.RED}[!] Gecersiz port parametresi: {exc}{Style.RESET_ALL}")
+        sys.exit(2)
     
     # CIDR kontrolü
     if '/' in args.hedef:
-        targets = parse_cidr(args.hedef)
-        if not targets:
+        try:
+            targets = parse_cidr(args.hedef)
+        except ValueError:
             print(f"{Fore.RED}[!] Geçersiz CIDR formatı!{Style.RESET_ALL}")
             sys.exit(1)
         print(f"{Fore.YELLOW}[+] CIDR genişletildi: {len(targets)} hedef{Style.RESET_ALL}")
@@ -3448,14 +3500,18 @@ def main():
         
         # Toplu rapor
         if args.output:
-            with open(args.output, 'w', encoding='utf-8') as f:
-                json.dump({
-                    'cidr': args.hedef,
-                    'targets': len(targets),
-                    'scan_time': str(datetime.now()),
-                    'results': all_results
-                }, f, indent=2, ensure_ascii=False)
-            print(f"\n{Fore.GREEN}[+] Toplu JSON raporu kaydedildi: {args.output}{Style.RESET_ALL}")
+            try:
+                with open(args.output, 'w', encoding='utf-8') as f:
+                    json.dump({
+                        'cidr': args.hedef,
+                        'targets': len(targets),
+                        'scan_time': str(datetime.now()),
+                        'results': all_results
+                    }, f, indent=2, ensure_ascii=False)
+                print(f"\n{Fore.GREEN}[+] Toplu JSON raporu kaydedildi: {args.output}{Style.RESET_ALL}")
+            except OSError as exc:
+                print(f"{Fore.RED}[!] Toplu rapor kaydedilemedi: {exc}{Style.RESET_ALL}")
+                sys.exit(1)
     else:
         # Tek hedef tarama
         scanner = PortScanner(
